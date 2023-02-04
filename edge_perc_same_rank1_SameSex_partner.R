@@ -1,0 +1,207 @@
+## Created by Caleb C. Vogt, PhD Candidate @ Cornell University
+
+library(tidyverse)
+library(magrittr)
+library(data.table)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+
+wd <- getwd()
+dd <- paste(getwd(), "data", sep = "/")
+output_fp <- paste(getwd(), "output", sep = "/")
+
+el <- read.csv("data/ALLTRIAL_MOVEBOUT_edgelist.csv")
+metadata <- read_excel("data/LID_2020_metadata.xlsx", sheet = 1, skip = 1)
+
+# edge_data_perc_same_top_social_partner_SameSex -------------------------------------------------
+
+## Get MM comparisons
+df0 <- el %>% 
+  merge(., metadata, by.x = "ID1", by.y = "name") %>%
+  mutate(trial = trial.x, ID1_strain = strain, ID1_sex = sex, ID1_family_group = family_group, ID1_cage = cage, ID1_zone_drop = zone_drop) %>% 
+  select(trial, day, sum_duration_s, ID1, ID2, ID1_strain, ID1_sex, ID1_family_group, ID1_cage, ID1_zone_drop) %>% 
+  merge(., metadata, by.x = "ID2", by.y = "name") %>%
+  mutate(trial = trial.x, ID2_strain = strain, ID2_sex = sex, ID2_family_group = family_group, ID2_cage = cage, ID2_zone_drop = zone_drop) %>% 
+  select(trial, day, sum_duration_s, ID1, ID2, 
+         ID1_strain, ID1_sex, ID1_family_group, ID1_cage, ID1_zone_drop,
+         ID2_strain, ID2_sex, ID2_family_group, ID2_cage, ID2_zone_drop) %>% 
+  filter(ID1_sex == "M" & ID2_sex == "M")
+
+x <- unique(df0$ID1)
+y <- unique(df0$ID2)
+mice <- c(x,y)
+mice <- unique(mice)
+
+mouse_list <- list()
+aa = mice[1]
+aa = "Bill"
+for(aa in mice[1:length(mice)]) {
+  df <- df0 %>% 
+    filter(ID1 == aa | ID2 == aa)
+  days <- unique(df$day)
+  
+  day_list <- list()
+  bb =1
+  for(bb in days[1:length(days)]) {
+    df2 <- df %>% 
+      filter(ID1 == aa | ID2 == aa) %>% 
+      filter(day == bb) %>%
+      mutate(focal = aa, ID1 = na_if(ID1, aa), ID2 = na_if(ID2, aa)) %>% 
+      mutate(partner = coalesce(ID1,ID2)) %>% 
+      arrange(desc(sum_duration_s)) %>% 
+      mutate(rank_order = c(1:nrow(.))) %>% 
+      select(trial, day, focal, partner, rank_order, sum_duration_s)
+    
+    day_list[[bb]] <- df2
+    print(paste(aa, "day", bb, "finshed"))
+  }
+  mouse_list[[aa]] <- do.call("rbind", day_list)
+}
+df <- do.call("rbind", mouse_list)
+
+cols <- colnames(df)
+df2 <- df %>% 
+  merge(., metadata, by.x = "focal", by.y = "name") %>%
+  mutate(trial = trial.x, focal_strain = strain, focal_sex = sex, focal_family_group = family_group, focal_cage = cage, focal_zone_drop = zone_drop) %>% 
+  select(trial, day, rank_order,sum_duration_s, focal, partner, focal_strain, focal_sex, focal_family_group, focal_cage, focal_zone_drop) %>%  
+  merge(., metadata, by.x = "partner", by.y = "name") %>%
+  mutate(trial = trial.x, partner_strain = strain, partner_sex = sex, partner_family_group = family_group, partner_cage = cage, partner_zone_drop = zone_drop) %>% 
+  select(trial, focal, partner, day,rank_order, sum_duration_s,focal_strain, focal_sex, focal_family_group, focal_cage, focal_zone_drop,
+         partner_strain, partner_sex, partner_family_group, partner_cage, partner_zone_drop) %>%  
+  filter(rank_order==1) %>% 
+  arrange(focal, day) %>% 
+  group_by(focal) %>% 
+  mutate(same_partner = ifelse(partner == lag(partner),1,0), 
+         same_cage = ifelse(focal_cage == partner_cage,1,0)) %>%
+  mutate(focal_strain_sex = paste(focal_strain,focal_sex,sep="-")) %>% 
+  filter(!(day==1))
+
+df3 <- df2 %>% 
+  group_by(focal_strain_sex, day) %>% 
+  summarise(count_tot=n(),
+            p = mean(as.numeric(as.character(same_partner))), ## Change
+            count_same=sum(same_partner)) %>%  ## Change
+  # p = mean(as.numeric(as.character(same_cage))), ## Change
+  # count_same=sum(same_cage)) %>%  ## Change
+  mutate(perc_same = (count_same / count_tot) * 100,
+         se = sqrt(p*(1-p)/count_tot)*100)
+mm <- df3
+
+
+## Get FF comparisons
+df0 <- el %>% 
+  merge(., metadata, by.x = "ID1", by.y = "name") %>%
+  mutate(trial = trial.x, ID1_strain = strain, ID1_sex = sex, ID1_family_group = family_group, ID1_cage = cage, ID1_zone_drop = zone_drop) %>% 
+  select(trial, day, sum_duration_s, ID1, ID2, ID1_strain, ID1_sex, ID1_family_group, ID1_cage, ID1_zone_drop) %>% 
+  merge(., metadata, by.x = "ID2", by.y = "name") %>%
+  mutate(trial = trial.x, ID2_strain = strain, ID2_sex = sex, ID2_family_group = family_group, ID2_cage = cage, ID2_zone_drop = zone_drop) %>% 
+  select(trial, day, sum_duration_s, ID1, ID2, 
+         ID1_strain, ID1_sex, ID1_family_group, ID1_cage, ID1_zone_drop,
+         ID2_strain, ID2_sex, ID2_family_group, ID2_cage, ID2_zone_drop) %>% 
+  filter(ID1_sex == "F" & ID2_sex == "F") ## Change
+
+x <- unique(df0$ID1)
+y <- unique(df0$ID2)
+mice <- c(x,y)
+mice <- unique(mice)
+
+mouse_list <- list()
+aa = mice[1]
+aa = "Bill"
+for(aa in mice[1:length(mice)]) {
+  df <- df0 %>% 
+    filter(ID1 == aa | ID2 == aa)
+  days <- unique(df$day)
+  
+  day_list <- list()
+  bb =1
+  for(bb in days[1:length(days)]) {
+    df2 <- df %>% 
+      filter(ID1 == aa | ID2 == aa) %>% 
+      filter(day == bb) %>%
+      mutate(focal = aa, ID1 = na_if(ID1, aa), ID2 = na_if(ID2, aa)) %>% 
+      mutate(partner = coalesce(ID1,ID2)) %>% 
+      arrange(desc(sum_duration_s)) %>% 
+      mutate(rank_order = c(1:nrow(.))) %>% 
+      select(trial, day, focal, partner, rank_order, sum_duration_s)
+    
+    day_list[[bb]] <- df2
+    print(paste(aa, "day", bb, "finshed"))
+  }
+  mouse_list[[aa]] <- do.call("rbind", day_list)
+}
+df <- do.call("rbind", mouse_list)
+
+cols <- colnames(df)
+df2 <- df %>% 
+  merge(., metadata, by.x = "focal", by.y = "name") %>%
+  mutate(trial = trial.x, focal_strain = strain, focal_sex = sex, focal_family_group = family_group, focal_cage = cage, focal_zone_drop = zone_drop) %>% 
+  select(trial, day, rank_order,sum_duration_s, focal, partner, focal_strain, focal_sex, focal_family_group, focal_cage, focal_zone_drop) %>%  
+  merge(., metadata, by.x = "partner", by.y = "name") %>%
+  mutate(trial = trial.x, partner_strain = strain, partner_sex = sex, partner_family_group = family_group, partner_cage = cage, partner_zone_drop = zone_drop) %>% 
+  select(trial, focal, partner, day,rank_order, sum_duration_s,focal_strain, focal_sex, focal_family_group, focal_cage, focal_zone_drop,
+         partner_strain, partner_sex, partner_family_group, partner_cage, partner_zone_drop) %>%  
+  filter(rank_order==1) %>% 
+  arrange(focal, day) %>% 
+  group_by(focal) %>% 
+  mutate(same_partner = ifelse(partner == lag(partner),1,0), 
+         same_cage = ifelse(focal_cage == partner_cage,1,0)) %>%
+  mutate(focal_strain_sex = paste(focal_strain,focal_sex,sep="-")) %>% 
+  filter(!(day==1))
+
+df3 <- df2 %>% 
+  group_by(focal_strain_sex, day) %>% 
+  summarise(count_tot=n(),
+            p = mean(as.numeric(as.character(same_partner))), ## Change
+            count_same=sum(same_partner)) %>%  ## Change
+  mutate(perc_same = (count_same / count_tot) * 100,
+         se = sqrt(p*(1-p)/count_tot)*100)
+ff <- df3
+
+## combine mm and ff
+mmff <- rbind(mm, ff)
+
+(p <- ggplot(mmff, aes(x = day, y = perc_same, color = focal_strain_sex)) +
+    geom_line(size = 0.75) + 
+    geom_point(size = 1.5) +
+    geom_errorbar(aes(ymin = perc_same - se, ymax = perc_same + se), width = 0.2) +
+    scale_color_manual(breaks = c("C57-F", "C57-M", "NYOB-F", "NYOB-M"),
+                       values=c("sienna1", "sienna", "skyblue", "skyblue4")) +
+    theme_classic() +
+    xlab("Day") +
+    ylab("% mice with same previously observed top ranked SameSex partner") +
+    theme(axis.text.x = element_text(color = "black", size = 8),
+          axis.title.x = element_text(color = "black", size = 8, face = "bold"), 
+          axis.text.y = element_text(color = "black", size = 8),
+          axis.title.y = element_text(color = "black", size = 8, face = "bold"), 
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent"), 
+          legend.title = element_blank(),
+          legend.text = element_text(size=8))
+)
+ggsave(p, filename = "output/edge_data_perc_same_top_social_partner_SameSex.png", device = "png", bg = "white")
+ggsave(p, filename = "output/edge_data_perc_same_top_social_partner_SameSex.svg", device = "svg", width=2.5, height=2.15, bg = "transparent")
+
+# same_partner stats
+
+# df2$trial <- as.factor(df2$trial)
+# df2$sex <- as.factor(df2$sex)
+# df2$strain <- as.factor(df2$strain)
+# df2$noon_day <- as.numeric(df2$noon_day)
+
+## These models need to be evaluated... 
+m1 = glmer(same_partner ~ focal_strain_sex*log(day)  +(1|trial)+ (1+log(day)|focal), family="binomial", data=df2) 
+m2 = glmer(same_partner ~ focal_strain_sex*log(day)  + (1|trial) + (1|focal), family="binomial", data=df2) 
+# when we experienced convergence issues we simplified the random effect structure until the convergence disappeared. 
+
+m3 = glmer(same_partner ~ focal_strain+log(day)  +(1|trial)+ (1+log(day)|focal), family="binomial", data=df2) # strain only because males and females are not independent
+## MM,FF, OppSex models with just focal_strain
+
+AIC(m1,m2)
+qqnorm(resid(m1))
+qqline(resid(m1))
+summary(m3)
+write.table(summary(m1)$coef, "clipboard", sep="\t", row.names=TRUE, col.names = TRUE)
+
