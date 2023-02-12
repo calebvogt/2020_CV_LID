@@ -130,10 +130,5 @@ for(aa in 1:length(social_data)){
 
 }
 df8 <- do.call("rbind", trial_stats)
- 
-# test <- df8 %>% 
-#   group_by(trial, ID1, ID2,day) %>% 
-#   summarize(sum_duration_s = sum(duration_s))
-
 write.csv(df8, "data/ALLTRIAL_MOVEBOUT_GBI_edgelist.csv")
 

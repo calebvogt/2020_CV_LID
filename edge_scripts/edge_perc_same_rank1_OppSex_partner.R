@@ -15,6 +15,10 @@ output_fp <- paste(getwd(), "output", sep = "/")
 el <- read.csv("data/ALLTRIAL_MOVEBOUT_edgelist.csv")
 metadata <- read_excel("data/LID_2020_metadata.xlsx", sheet = 1, skip = 1)
 
+
+# test <- df8 %>% 
+#   group_by(trial, ID1, ID2,day) %>% 
+#   summarize(sum_duration_s = sum(duration_s))
 # top OppSex repeated top ranked partner -------------------------------------------------
 df0 <- el %>% 
   merge(., metadata, by.x = "ID1", by.y = "name") %>%
